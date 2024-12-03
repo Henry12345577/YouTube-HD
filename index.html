@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Song Streaming & Uploading App</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f4f4f9;
+        }
+        h1 {
+            text-align: center;
+        }
+        form, .uploads, .player {
+            margin: 20px auto;
+            max-width: 600px;
+            padding: 20px;
+            border: 1px solid #ccc;
+            background: #fff;
+            border-radius: 5px;
+        }
+        input, button, select {
+            width: 100%;
+            margin-bottom: 10px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        .uploads div {
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #e0e0e0;
+            border-radius: 5px;
+        }
+        .private {
+            background: #ffdddd;
+        }
+        audio, video {
+            width: 100%;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Song Streaming & Uploading App</h1>
+
+    <!-- Signup/Login Form -->
+    <form id="authForm">
+        <h2>Sign Up / Login</h2>
+        <input type="email" id="email" placeholder="Email" required>
+        <input type="password" id="password" placeholder="Password" required>
+        <button type="submit">Sign Up / Login</button>
+    </form>
+
+    <!-- Upload Form -->
+    <form id="uploadForm" style="display:none;">
+        <h2>Upload Music or Video</h2>
+        <input type="file" id="file" accept="audio/*,video/*" required>
+        <input type="text" id="title" placeholder="Title" required>
+        <input type="text" id="description" placeholder="Description" required>
+        <select id="visibility">
+            <option value="public">Public</option>
+            <option value="private">Private</option>
+        </select>
+        <button type="submit">Upload</button>
+    </form>
+
+    <!-- Search Form -->
+    <form id="searchForm" style="display:none;">
+        <h2>Search Uploads</h2>
+        <input type="text" id="searchQuery" placeholder="Search by Title or Description">
+        <button type="submit">Search</button>
+    </form>
+
+    <!-- Uploaded Files Section -->
+    <div class="uploads" id="uploads" style="display:none;">
+        <h2>Your Uploads</h2>
+        <!-- Uploaded files will be listed here -->
+    </div>
+
+    <!-- Player Section -->
+    <div class="player" id="player" style="display:none;">
+        <h2>Now Playing</h2>
+        <p id="nowPlayingTitle">Select a file to play</p>
+        <audio id="audioPlayer" controls style="display:none;"></audio>
+        <video id="videoPlayer" controls style="display:none;"></video>
+    </div>
+
+    <script>
+        // IndexedDB setup
+        const dbRequest = indexedDB.open("SongAppDB", 1);
+        let db;
+
+        dbRequest.onupgradeneeded = function(event) {
+            db = event.target.result;
+            db.createObjectStore("uploads", { keyPath: "id", autoIncrement: true });
+        };
+
+        dbRequest.onsuccess = function(event) {
+            db = event.target.result;
+        };
+
+        dbRequest.onerror = function(event) {
+            console.error("Error opening database:", event.target.error);
+        };
+
+        // User authentication
+        const authForm = document.getElementById('authForm');
+        const uploadForm = document.getElementById('uploadForm');
+        const searchForm = document.getElementById('searchForm');
+        const uploadsDiv = document.getElementById('uploads');
+        const playerDiv = document.getElementById('player');
+        const audioPlayer = document.getElementById('audioPlayer');
+        const videoPlayer = document.getElementById('videoPlayer');
+        const nowPlayingTitle = document.getElementById('nowPlayingTitle');
+        const emailInput = document.getElementById('email');
+        const passwordInput = document.getElementById('password');
+        const loggedUser = localStorage.getItem('loggedUser');
+
+        if (loggedUser) {
+            authForm.style.display = "none";
+            uploadForm.style.display = "block";
+            searchForm.style.display = "block";
+            uploadsDiv.style.display = "block";
+            displayUploads();
+        }
+
+        authForm.onsubmit = function(e) {
+            e.preventDefault();
+            const email = emailInput.value;
+            const password = passwordInput.value;
+            localStorage.setItem('loggedUser', email);
+            alert("Logged in successfully!");
+            authForm.style.display = "none";
+            uploadForm.style.display = "block";
+            searchForm.style.display = "block";
+            uploadsDiv.style.display = "block";
+            displayUploads();
+        };
+
+        // File upload
+        uploadForm.onsubmit = function(e) {
+            e.preventDefault();
+            const fileInput = document.getElementById('file');
+            const title = document.getElementById('title').value;
+            const description = document.getElementById('description').value;
+            const visibility = document.getElementById('visibility').value;
+
+            const file = fileInput.files[0];
+            const reader = new FileReader();
+
+            reader.onload = function(event) {
+                const fileData = {
+                    title,
+                    description,
+                    visibility,
+                    file: event.target.result,
+                    fileType: file.type,
+                    owner: localStorage.getItem('loggedUser')
+                };
+                saveToDB(fileData);
+            };
+
+            reader.readAsDataURL(file);
+        };
+
+        // Save file to IndexedDB
+        function saveToDB(fileData) {
+            const transaction = db.transaction(["uploads"], "readwrite");
+            const store = transaction.objectStore("uploads");
+            store.add(fileData);
+
+            transaction.oncomplete = function() {
+                alert("File uploaded successfully!");
+                displayUploads();
+            };
+
+            transaction.onerror = function(event) {
+                console.error("Error saving to DB:", event.target.error);
+            };
+        }
+
+        // Display uploads
+        function displayUploads(query = "") {
+            const transaction = db.transaction(["uploads"], "readonly");
+            const store = transaction.objectStore("uploads");
+            const request = store.getAll();
+
+            request.onsuccess = function() {
+                const uploads = request.result;
+                const user = localStorage.getItem('loggedUser');
+                uploadsDiv.innerHTML = `<h2>Your Uploads</h2>`;
+                uploads.forEach(upload => {
+                    const matchesQuery = 
+                        upload.title.toLowerCase().includes(query.toLowerCase()) || 
+                        upload.description.toLowerCase().includes(query.toLowerCase());
+                    
+                    if ((upload.owner === user || upload.visibility === "public") && matchesQuery) {
+                        const div = document.createElement("div");
+                        div.className = upload.visibility === "private" ? "private" : "";
+                        div.innerHTML = `
+                            <strong>${upload.title}</strong> - ${upload.description}<br>
+                            <small>${upload.visibility === "private" ? "Private" : "Public"}</small><br>
+                            <button onclick="playMedia('${upload.file}', '${upload.fileType}', '${upload.title}')">Play</button>
+                            <button onclick="deleteUpload(${upload.id})">Delete</button>
+                        `;
+                        uploadsDiv.appendChild(div);
+                    }
+                });
+            };
+        }
+
+        // Play media
+        function playMedia(file, fileType, title) {
+            nowPlayingTitle.textContent = `Now Playing: ${title}`;
+            audioPlayer.style.display = "none";
+            videoPlayer.style.display = "none";
+
+            if (fileType.startsWith("audio")) {
+                audioPlayer.src = file;
+                audioPlayer.style.display = "block";
+                audioPlayer.play();
+            } else if (fileType.startsWith("video")) {
+                videoPlayer.src = file;
+                videoPlayer.style.display = "block";
+                videoPlayer.play();
+            }
+
+            playerDiv.style.display = "block";
+        }
+
+        // Delete upload
+        function deleteUpload(id) {
+            const transaction = db.transaction(["uploads"], "readwrite");
+            const store = transaction.objectStore("uploads");
+            store.delete(id);
+
+            transaction.oncomplete = function() {
+                alert("Upload deleted successfully!");
+                displayUploads();
+            };
+        }
+
+        // Search uploads
+        const searchForm = document.getElementById('searchForm');
+        const searchQuery = document.getElementById('searchQuery');
+
+        searchForm.onsubmit = function(e) {
+            e.preventDefault();
+            const query = searchQuery.value.trim();
+            displayUploads(query);
+        };
+    </script>
+</body>
+</html>
